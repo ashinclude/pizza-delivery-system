@@ -6,3 +6,9 @@
   from = "/*"
   to = "/index.html"
   status = 200
+
+[build.environment]
+  FLUTTER_VERSION = "stable"
+
+[template.environment]
+  GROQ_API_KEY = "Change me for your GROQ API key"

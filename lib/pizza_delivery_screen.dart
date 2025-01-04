@@ -196,30 +196,11 @@ class _PizzaDeliveryScreenState extends State<PizzaDeliveryScreen> {
   }
 
 // Replace the existing _handleUserAgent method with this one
-  Future<void> _handleUserAgent() async {
+Future<void> _handleUserAgent() async {
     final userMessage = _messages.last.content;
-
+    
     try {
-      // Add fallback check for repeated messages
-      if (_messages.length >= 2) {
-        String lastUserMessage = _messages
-            .where((m) => m.role == "user")
-            .skip(_messages.where((m) => m.role == "user").length - 2)
-            .first
-            .content;
-
-        if (userMessage.toLowerCase() == lastUserMessage.toLowerCase()) {
-          _addMessage(
-            content:
-                "I notice you've sent the same message again. Let me help you with that. Would you like to:\n1. See our menu\n2. Place an order\n3. Ask about specific pizzas\n\nPlease let me know how I can assist you!",
-            role: "assistant",
-            agentType: "user_agent",
-          );
-          return;
-        }
-      }
-
-      // Your existing code starts here unchanged
+      // Skip intent classification if we're in the middle of an order confirmation
       if (_currentOrderDetails != null &&
           _currentStatus == OrderStatus.initiated) {
         final confirmationKeywords = [
@@ -244,6 +225,7 @@ class _PizzaDeliveryScreenState extends State<PizzaDeliveryScreen> {
 
         if (confirmationKeywords
             .any((word) => userMessage.toLowerCase().contains(word))) {
+          // Handle confirmation as before...
           final selectedItem = MENU.firstWhere(
             (item) => item.name == _currentOrderDetails,
             orElse: () => MenuItem(name: '', price: 0, ingredients: []),
@@ -264,6 +246,7 @@ class _PizzaDeliveryScreenState extends State<PizzaDeliveryScreen> {
           return;
         } else if (rejectionKeywords
             .any((word) => userMessage.toLowerCase().contains(word))) {
+          // Handle rejection as before...
           _addMessage(
             content:
                 "No problem! Your wallet won't be charged. Would you like to order something else?",
@@ -275,15 +258,48 @@ class _PizzaDeliveryScreenState extends State<PizzaDeliveryScreen> {
         }
       }
 
+      // Pre-process message for common queries
+      final lowerMessage = userMessage.toLowerCase();
+      if (lowerMessage.contains('non veg') || lowerMessage.contains('non-veg')) {
+        final nonVegPizzas = MENU.where((item) => item.diet == "non-vegetarian").toList();
+        _addMessage(
+          content: """Here are our non-vegetarian pizzas:
+${nonVegPizzas.map((pizza) => "- ${pizza.name}: ₹${pizza.price}\n  Contains: ${pizza.ingredients.join(', ')}").join('\n')}
+
+Would you like to order any of these pizzas?""",
+          role: "assistant",
+          agentType: "user_agent",
+        );
+        return;
+      }
+
+      // Check for specific pizza inquiries
+      final specificPizza = _findMatchingPizza(userMessage);
+      if (specificPizza != null) {
+        _addMessage(
+          content: """${specificPizza.item.name}:
+Price: ₹${specificPizza.item.price}
+Ingredients: ${specificPizza.item.ingredients.join(', ')}
+
+Would you like to order this pizza?""",
+          role: "assistant",
+          agentType: "user_agent",
+        );
+        return;
+      }
+
+      // Classify the intent
       final intent = await ApiService.classifyIntent(userMessage);
 
       switch (intent) {
         case QueryIntent.orderPizza:
+          // Try to find a matching pizza using our enhanced matching
           final pizzaMatch = _findMatchingPizza(userMessage);
 
           if (pizzaMatch != null) {
             _currentOrderDetails = pizzaMatch.item.name;
 
+            // Check wallet balance
             if (pizzaMatch.item.price > _walletBalance) {
               _addMessage(
                 content: INSUFFICIENT_BALANCE_MESSAGE
@@ -295,6 +311,7 @@ class _PizzaDeliveryScreenState extends State<PizzaDeliveryScreen> {
               return;
             }
 
+            // If confidence is very high, proceed with order
             if (pizzaMatch.confidence > 0.9) {
               _addMessage(
                 content: WALLET_CHARGE_MESSAGE
@@ -304,6 +321,7 @@ class _PizzaDeliveryScreenState extends State<PizzaDeliveryScreen> {
                 agentType: "user_agent",
               );
             } else {
+              // If confidence is lower, ask for confirmation
               _addMessage(
                 content:
                     "Did you mean ${pizzaMatch.item.name}? This pizza contains: ${pizzaMatch.item.ingredients.join(', ')}. Would you like to order this?",
@@ -343,20 +361,32 @@ class _PizzaDeliveryScreenState extends State<PizzaDeliveryScreen> {
 
         case QueryIntent.unknown:
         default:
-          final response =
-              await ApiService.getLLMResponse(_messages, USER_AGENT_PROMPT);
+          final response = await ApiService.getLLMResponse(_messages, USER_AGENT_PROMPT);
           _addMessage(
               content: response, role: "assistant", agentType: "user_agent");
           break;
       }
     } catch (e) {
-      // Fallback response if anything fails
-      _addMessage(
-        content:
-            "I'm still here to help! Would you like to see our menu or place an order? You can also ask me about any specific pizza or its ingredients.",
-        role: "assistant",
-        agentType: "user_agent",
-      );
+      // If error occurs, try to give a contextual response based on the user's message
+      final lowerMessage = userMessage.toLowerCase();
+      if (lowerMessage.contains('non veg') || lowerMessage.contains('non-veg')) {
+        final nonVegPizzas = MENU.where((item) => item.diet == "non-vegetarian").toList();
+        _addMessage(
+          content: """Here are our non-vegetarian pizzas:
+${nonVegPizzas.map((pizza) => "- ${pizza.name}: ₹${pizza.price}\n  Contains: ${pizza.ingredients.join(', ')}").join('\n')}
+
+Would you like to order any of these pizzas?""",
+          role: "assistant",
+          agentType: "user_agent",
+        );
+      } else {
+        // If we can't determine the context, provide a helpful response
+        _addMessage(
+          content: "I can help you with our menu, specific pizzas, or placing an order. What would you like to know about?",
+          role: "assistant",
+          agentType: "user_agent",
+        );
+      }
     }
   }
 

@@ -23,7 +23,7 @@ class ApiService {
                 "role": msg.role,
                 "content": msg.content,
               })
-          .toList()
+          
     ];
 
     try {

@@ -22,7 +22,7 @@ class _PizzaDeliveryScreenState extends State<PizzaDeliveryScreen> {
   final ScrollController _scrollController = ScrollController();
   final List<Message> _messages = [];
   OrderStatus _currentStatus = OrderStatus.initiated;
-  Map<String, String> _agentOutputs = {};
+  final Map<String, String> _agentOutputs = {};
   bool _isProcessing = false;
   bool _isWaitingForFeedback = false;
   String? _currentOrderDetails;
@@ -609,7 +609,7 @@ Which pizza would you like to order?""",
 
   @override
   Widget build(BuildContext context) {
-    final FocusNode _focusNode = FocusNode();
+    final FocusNode focusNode = FocusNode();
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.black,
@@ -664,7 +664,7 @@ Which pizza would you like to order?""",
                     Expanded(
                       child: TextField(
                         controller: _messageController,
-                        focusNode: _focusNode,
+                        focusNode: focusNode,
                         style: GoogleFonts.poppins(color: Colors.white),
                         decoration: InputDecoration(
                           hintText: 'Type your message...',
@@ -684,7 +684,7 @@ Which pizza would you like to order?""",
                         ),
                         onSubmitted: (text) {
                           _handleSubmitted(text);
-                          _focusNode.requestFocus();
+                          focusNode.requestFocus();
                         },
                       ),
                     ),

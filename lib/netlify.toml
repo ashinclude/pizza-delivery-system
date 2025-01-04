@@ -1,4 +1,0 @@
-[build]
-  publish = "build/web"
-  command = "flutter build web"
-

@@ -15,7 +15,7 @@ class ApiService {
           return apiKey;
         }
       }
-      
+
       // Fallback to dotenv (for local development)
       return dotenv.env['GROQ_API_KEY'];
     } catch (e) {
@@ -73,22 +73,28 @@ class ApiService {
   }
 
   static Future<QueryIntent> classifyIntent(String message) async {
-    const intentPrompt =
+      const intentPrompt =
         """You are an intent classifier for a pizza ordering system. 
 Given a user message, classify it into one of these intents:
-- orderPizza: User wants to order a specific pizza
+- orderPizza: User explicitly wants to order a specific pizza
 - askIngredients: User is asking about ingredients
-- askPreferences: User is asking about dietary preferences
+- askPreferences: User is asking about dietary options (vegetarian/non-vegetarian), or asking for suggestions
 - askPrice: User is asking about prices
 - generalQuestion: General questions about the service
 - confirmation: User is confirming something
 - rejection: User is rejecting something
-- showMenu: User wants to see the menu (e.g., "show menu", "menu", "show the menu", "what's on the menu")
+- showMenu: User wants to see the menu
 - unknown: Cannot determine the intent
+
+Key classification rules:
+1. If user asks for "veg", "non-veg", or "suggestions" -> classify as askPreferences
+2. Only classify as orderPizza if user specifically mentions ordering a pizza
+3. Requests for recommendations should be askPreferences
 
 Respond with ONLY the intent label, nothing else.
 
 Message: """;
+
 
     try {
       final response = await getLLMResponse(
@@ -97,7 +103,7 @@ Message: """;
       );
 
       switch (response.trim().toLowerCase()) {
-        case 'orderpizza':
+   case 'orderpizza':
           return QueryIntent.orderPizza;
         case 'askingredients':
           return QueryIntent.askIngredients;
@@ -111,6 +117,8 @@ Message: """;
           return QueryIntent.confirmation;
         case 'rejection':
           return QueryIntent.rejection;
+        case 'showmenu':
+          return QueryIntent.showMenu;
         default:
           return QueryIntent.unknown;
       }
@@ -122,14 +130,15 @@ Message: """;
 
   static Future<String> getResponseByIntent(
       String message, QueryIntent intent, List<Message> context) async {
-    final prompts = {
+      final prompts = {
       QueryIntent.askIngredients:
           """You are a knowledgeable pizza expert. Analyze the user's question about ingredients and provide a clear, specific answer based on the available menu. Focus only on ingredient information and avoid making assumptions. If asking about an ingredient, list all pizzas containing it.""",
       QueryIntent.askPreferences:
-          """You are a helpful dietary advisor for a pizza restaurant. Help users with dietary preferences based on the available menu. Clearly identify vegetarian and non-vegetarian options, and help with specific dietary requirements.""",
+          """You are a helpful dietary advisor for a pizza restaurant. When users ask about vegetarian or non-vegetarian options, list all relevant pizzas from the menu with their ingredients and prices. For non-vegetarian requests, list all pizzas containing meat. For vegetarian requests, list all vegetarian pizzas. Help with specific dietary requirements and provide clear suggestions.""",
       QueryIntent.askPrice:
           """You are a pizza restaurant's pricing expert. Answer questions about prices based on the available menu. Provide clear price information and help with comparisons if asked.""",
     };
+
 
     final prompt = prompts[intent] ??
         "You are a helpful pizza ordering assistant. Provide relevant information based on the user's query.";

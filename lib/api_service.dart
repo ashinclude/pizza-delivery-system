@@ -24,6 +24,8 @@ class ApiService {
     }
   }
 
+  // In api_service.dart, update the getLLMResponse method:
+
   static Future<String> getLLMResponse(
       List<Message> messages, String systemPrompt) async {
     final apiKey = _getApiKey();
@@ -37,10 +39,23 @@ class ApiService {
       'Content-Type': 'application/json',
     };
 
+    // Enhance context window by including more recent messages
+    final recentMessages = messages.length > 10
+        ? messages.sublist(messages.length - 10)
+        : messages;
+
+    // Create a richer context for the LLM
     final List<Map<String, String>> formattedMessages = [
       {"role": "system", "content": systemPrompt},
-      ...messages
-          .take(5)
+      // Add a context message summarizing the conversation state
+      {
+        "role": "system",
+        "content": """Last few messages summary:
+${recentMessages.map((m) => "${m.role}: ${m.content}").join('\n')}
+
+Current conversation state and context should be maintained. Respond appropriately to the latest user message while considering this conversation history."""
+      },
+      ...recentMessages
           .map((msg) => {
                 "role": msg.role,
                 "content": msg.content,
@@ -73,7 +88,7 @@ class ApiService {
   }
 
   static Future<QueryIntent> classifyIntent(String message) async {
-      const intentPrompt =
+    const intentPrompt =
         """You are an intent classifier for a pizza ordering system. 
 Given a user message, classify it into one of these intents:
 - orderPizza: User explicitly wants to order a specific pizza
@@ -95,7 +110,6 @@ Respond with ONLY the intent label, nothing else.
 
 Message: """;
 
-
     try {
       final response = await getLLMResponse(
         [Message(content: message, role: "user")],
@@ -103,7 +117,7 @@ Message: """;
       );
 
       switch (response.trim().toLowerCase()) {
-   case 'orderpizza':
+        case 'orderpizza':
           return QueryIntent.orderPizza;
         case 'askingredients':
           return QueryIntent.askIngredients;
@@ -130,7 +144,7 @@ Message: """;
 
   static Future<String> getResponseByIntent(
       String message, QueryIntent intent, List<Message> context) async {
-      final prompts = {
+    final prompts = {
       QueryIntent.askIngredients:
           """You are a knowledgeable pizza expert. Analyze the user's question about ingredients and provide a clear, specific answer based on the available menu. Focus only on ingredient information and avoid making assumptions. If asking about an ingredient, list all pizzas containing it.""",
       QueryIntent.askPreferences:
@@ -138,7 +152,6 @@ Message: """;
       QueryIntent.askPrice:
           """You are a pizza restaurant's pricing expert. Answer questions about prices based on the available menu. Provide clear price information and help with comparisons if asked.""",
     };
-
 
     final prompt = prompts[intent] ??
         "You are a helpful pizza ordering assistant. Provide relevant information based on the user's query.";

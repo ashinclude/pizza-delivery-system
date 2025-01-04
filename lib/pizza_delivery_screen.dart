@@ -199,143 +199,164 @@ class _PizzaDeliveryScreenState extends State<PizzaDeliveryScreen> {
   Future<void> _handleUserAgent() async {
     final userMessage = _messages.last.content;
 
-    // Skip intent classification if we're in the middle of an order confirmation
-    if (_currentOrderDetails != null &&
-        _currentStatus == OrderStatus.initiated) {
-      final confirmationKeywords = [
-        'yes',
-        'confirm',
-        'sure',
-        'okay',
-        'ok',
-        'proceed',
-        'go ahead',
-        'yep',
-        'yeah'
-      ];
-      final rejectionKeywords = [
-        'no',
-        'cancel',
-        'reject',
-        "don't",
-        'stop',
-        'nope'
-      ];
+    try {
+      // Add fallback check for repeated messages
+      if (_messages.length >= 2) {
+        String lastUserMessage = _messages
+            .where((m) => m.role == "user")
+            .skip(_messages.where((m) => m.role == "user").length - 2)
+            .first
+            .content;
 
-      if (confirmationKeywords
-          .any((word) => userMessage.toLowerCase().contains(word))) {
-        // Handle confirmation as before...
-        final selectedItem = MENU.firstWhere(
-          (item) => item.name == _currentOrderDetails,
-          orElse: () => MenuItem(name: '', price: 0, ingredients: []),
-        );
-
-        _deductFromWallet(selectedItem.price);
-        setState(() => _currentStatus = OrderStatus.confirmed);
-
-        _addMessage(
-          content: WALLET_CONFIRMATION_MESSAGE
-              .replaceAll("{PRICE}", selectedItem.price.toString())
-              .replaceAll("{BALANCE}", _walletBalance.toStringAsFixed(2)),
-          role: "assistant",
-          agentType: "user_agent",
-        );
-
-        await _processOrder();
-        return;
-      } else if (rejectionKeywords
-          .any((word) => userMessage.toLowerCase().contains(word))) {
-        // Handle rejection as before...
-        _addMessage(
-          content:
-              "No problem! Your wallet won't be charged. Would you like to order something else?",
-          role: "assistant",
-          agentType: "user_agent",
-        );
-        _resetOrderState();
-        return;
+        if (userMessage.toLowerCase() == lastUserMessage.toLowerCase()) {
+          _addMessage(
+            content:
+                "I notice you've sent the same message again. Let me help you with that. Would you like to:\n1. See our menu\n2. Place an order\n3. Ask about specific pizzas\n\nPlease let me know how I can assist you!",
+            role: "assistant",
+            agentType: "user_agent",
+          );
+          return;
+        }
       }
-    }
 
-    // Classify the intent
-    final intent = await ApiService.classifyIntent(userMessage);
+      // Your existing code starts here unchanged
+      if (_currentOrderDetails != null &&
+          _currentStatus == OrderStatus.initiated) {
+        final confirmationKeywords = [
+          'yes',
+          'confirm',
+          'sure',
+          'okay',
+          'ok',
+          'proceed',
+          'go ahead',
+          'yep',
+          'yeah'
+        ];
+        final rejectionKeywords = [
+          'no',
+          'cancel',
+          'reject',
+          "don't",
+          'stop',
+          'nope'
+        ];
 
-    switch (intent) {
-      case QueryIntent.orderPizza:
-        // Try to find a matching pizza using our enhanced matching
-        final pizzaMatch = _findMatchingPizza(userMessage);
+        if (confirmationKeywords
+            .any((word) => userMessage.toLowerCase().contains(word))) {
+          final selectedItem = MENU.firstWhere(
+            (item) => item.name == _currentOrderDetails,
+            orElse: () => MenuItem(name: '', price: 0, ingredients: []),
+          );
 
-        if (pizzaMatch != null) {
-          _currentOrderDetails = pizzaMatch.item.name;
+          _deductFromWallet(selectedItem.price);
+          setState(() => _currentStatus = OrderStatus.confirmed);
 
-          // Check wallet balance
-          if (pizzaMatch.item.price > _walletBalance) {
-            _addMessage(
-              content: INSUFFICIENT_BALANCE_MESSAGE
-                  .replaceAll("{ITEM}", pizzaMatch.item.name)
-                  .replaceAll("{BALANCE}", _walletBalance.toStringAsFixed(2)),
-              role: "assistant",
-              agentType: "user_agent",
-            );
-            return;
-          }
+          _addMessage(
+            content: WALLET_CONFIRMATION_MESSAGE
+                .replaceAll("{PRICE}", selectedItem.price.toString())
+                .replaceAll("{BALANCE}", _walletBalance.toStringAsFixed(2)),
+            role: "assistant",
+            agentType: "user_agent",
+          );
 
-          // If confidence is very high, proceed with order
-          if (pizzaMatch.confidence > 0.9) {
-            _addMessage(
-              content: WALLET_CHARGE_MESSAGE
-                  .replaceAll("{ITEM}", pizzaMatch.item.name)
-                  .replaceAll("{PRICE}", pizzaMatch.item.price.toString()),
-              role: "assistant",
-              agentType: "user_agent",
-            );
+          await _processOrder();
+          return;
+        } else if (rejectionKeywords
+            .any((word) => userMessage.toLowerCase().contains(word))) {
+          _addMessage(
+            content:
+                "No problem! Your wallet won't be charged. Would you like to order something else?",
+            role: "assistant",
+            agentType: "user_agent",
+          );
+          _resetOrderState();
+          return;
+        }
+      }
+
+      final intent = await ApiService.classifyIntent(userMessage);
+
+      switch (intent) {
+        case QueryIntent.orderPizza:
+          final pizzaMatch = _findMatchingPizza(userMessage);
+
+          if (pizzaMatch != null) {
+            _currentOrderDetails = pizzaMatch.item.name;
+
+            if (pizzaMatch.item.price > _walletBalance) {
+              _addMessage(
+                content: INSUFFICIENT_BALANCE_MESSAGE
+                    .replaceAll("{ITEM}", pizzaMatch.item.name)
+                    .replaceAll("{BALANCE}", _walletBalance.toStringAsFixed(2)),
+                role: "assistant",
+                agentType: "user_agent",
+              );
+              return;
+            }
+
+            if (pizzaMatch.confidence > 0.9) {
+              _addMessage(
+                content: WALLET_CHARGE_MESSAGE
+                    .replaceAll("{ITEM}", pizzaMatch.item.name)
+                    .replaceAll("{PRICE}", pizzaMatch.item.price.toString()),
+                role: "assistant",
+                agentType: "user_agent",
+              );
+            } else {
+              _addMessage(
+                content:
+                    "Did you mean ${pizzaMatch.item.name}? This pizza contains: ${pizzaMatch.item.ingredients.join(', ')}. Would you like to order this?",
+                role: "assistant",
+                agentType: "user_agent",
+              );
+            }
           } else {
-            // If confidence is lower, ask for confirmation
+            final response = await ApiService.getResponseByIntent(
+                userMessage, intent, _messages);
             _addMessage(
-              content:
-                  "Did you mean ${pizzaMatch.item.name}? This pizza contains: ${pizzaMatch.item.ingredients.join(', ')}. Would you like to order this?",
-              role: "assistant",
-              agentType: "user_agent",
-            );
+                content: response, role: "assistant", agentType: "user_agent");
           }
-        } else {
-          // No match found, get response from LLM
+          break;
+
+        case QueryIntent.askIngredients:
+        case QueryIntent.askPreferences:
+        case QueryIntent.askPrice:
+        case QueryIntent.generalQuestion:
           final response = await ApiService.getResponseByIntent(
               userMessage, intent, _messages);
           _addMessage(
               content: response, role: "assistant", agentType: "user_agent");
-        }
-        break;
+          break;
 
-      // Rest of the cases remain the same...
-      case QueryIntent.askIngredients:
-      case QueryIntent.askPreferences:
-      case QueryIntent.askPrice:
-      case QueryIntent.generalQuestion:
-        final response = await ApiService.getResponseByIntent(
-            userMessage, intent, _messages);
-        _addMessage(
-            content: response, role: "assistant", agentType: "user_agent");
-        break;
+        case QueryIntent.confirmation:
+        case QueryIntent.rejection:
+          final response = await ApiService.getResponseByIntent(
+              userMessage, intent, _messages);
+          _addMessage(
+              content: response, role: "assistant", agentType: "user_agent");
+          break;
 
-      case QueryIntent.confirmation:
-      case QueryIntent.rejection:
-        final response = await ApiService.getResponseByIntent(
-            userMessage, intent, _messages);
-        _addMessage(
-            content: response, role: "assistant", agentType: "user_agent");
-        break;
-      case QueryIntent.showMenu:
-        _showMenu(); // Use the existing _showMenu() method
-        break;
+        case QueryIntent.showMenu:
+          _showMenu();
+          break;
 
-      case QueryIntent.unknown:
-      default:
-        final response =
-            await ApiService.getLLMResponse(_messages, USER_AGENT_PROMPT);
-        _addMessage(
-            content: response, role: "assistant", agentType: "user_agent");
-        break;
+        case QueryIntent.unknown:
+        default:
+          final response =
+              await ApiService.getLLMResponse(_messages, USER_AGENT_PROMPT);
+          _addMessage(
+              content: response, role: "assistant", agentType: "user_agent");
+          break;
+      }
+    } catch (e) {
+      // Fallback response if anything fails
+      _addMessage(
+        content:
+            "I'm still here to help! Would you like to see our menu or place an order? You can also ask me about any specific pizza or its ingredients.",
+        role: "assistant",
+        agentType: "user_agent",
+      );
     }
   }
 

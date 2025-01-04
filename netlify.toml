@@ -5,7 +5,8 @@
     export PATH="$PATH:`pwd`/flutter/bin" && \
     flutter doctor && \
     flutter config --enable-web && \
-    flutter build web --release
+    flutter build web --release && \
+    sed -i "s/{{GROQ_API_KEY}}/$GROQ_API_KEY/g" build/web/index.html
   """
   publish = "build/web"
 
@@ -16,6 +17,3 @@
 
 [build.environment]
   FLUTTER_VERSION = "stable"
-
-[template.environment]
-  GROQ_API_KEY = "Change me for your GROQ API key"

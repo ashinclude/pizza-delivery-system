@@ -1,21 +1,23 @@
 import 'dart:convert';
-import 'dart:html' as html;
 import 'package:aifoodsystem/model.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'dart:js' as js;
 
 class ApiService {
   static String? _getApiKey() {
-    // First try to get from environment
-    final apiKey = dotenv.env['GROQ_API_KEY'];
-    if (apiKey != null && apiKey.isNotEmpty) return apiKey;
-
-    // If not found in dotenv, try to get from window object
     try {
-      final window = html.window;
-      return window.localStorage['GROQ_API_KEY'] ??
-          window.sessionStorage['GROQ_API_KEY'] ??
-          const String.fromEnvironment('GROQ_API_KEY');
+      // Try getting from window.ENV first (for web deployment)
+      final env = js.context['ENV'];
+      if (env != null) {
+        final apiKey = env['GROQ_API_KEY'];
+        if (apiKey != null && apiKey != '{{GROQ_API_KEY}}') {
+          return apiKey;
+        }
+      }
+      
+      // Fallback to dotenv (for local development)
+      return dotenv.env['GROQ_API_KEY'];
     } catch (e) {
       print('Error accessing API key: $e');
       return null;
@@ -25,7 +27,9 @@ class ApiService {
   static Future<String> getLLMResponse(
       List<Message> messages, String systemPrompt) async {
     final apiKey = _getApiKey();
-    if (apiKey == null || apiKey.isEmpty) return "Error: API key not found";
+    if (apiKey == null || apiKey.isEmpty || apiKey == '{{GROQ_API_KEY}}') {
+      return "Error: API key not found";
+    }
 
     final url = Uri.parse('https://api.groq.com/openai/v1/chat/completions');
     final headers = {

@@ -1,5 +1,12 @@
 [build]
-  command = "git clone https://github.com/flutter/flutter.git --depth 1 --branch stable && export PATH=\"$PATH:`pwd`/flutter/bin\" && flutter config --enable-web && flutter build web --release"
+  command = """
+    rm -rf flutter && \
+    git clone https://github.com/flutter/flutter.git --depth 1 --branch stable && \
+    export PATH="$PATH:`pwd`/flutter/bin" && \
+    flutter doctor && \
+    flutter config --enable-web && \
+    flutter build web --release
+  """
   publish = "build/web"
 
 [[redirects]]
